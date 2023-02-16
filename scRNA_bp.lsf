@@ -1,0 +1,104 @@
+###this script will be used to test building human genome from long reads 
+#BSUB -J singleCell
+#BSUB -W 24:00
+#BSUB -o /rsrch3/scratch/anesth/bpaul/GSE57249-single
+#BSUB -e /rsrch3/scratch/anesth/bpaul/GSE57249-single
+#BSUB -cwd /rsrch3/scratch/anesth/bpaul/GSE57249-single
+#BSUB -q medium
+#BSUB -u bpaul@mdanderson.org
+#BSUB -n 28
+#BSUB -M 270
+#BSUB -R rusage[mem=270]
+
+##define global variable to save space
+refFasta=/rsrch3/home/anesth/bpaul/ref_files/mm10/mm10.fa
+genome=/rsrch3/home/anesth/bpaul/ref_files/star/mm10_99
+datadir=/rsrch3/scratch/anesth/bpaul/GSE57249-single
+outdir=/rsrch3/scratch/anesth/bpaul/GSE57249-single
+genes=/rsrch3/home/anesth/bpaul/ref_files/mm10/mm10.ncbiRefSeq.gtf
+
+##load necessary modules
+module load star
+module load samtools/1.14
+#module load deeptools/3.1.3
+#module load fastqc
+module load htslib/1.13
+#module load sratoolkit
+#module load multiqc
+module load python/3.7.3-anaconda
+module load subread/2.0.3
+module load gcc/9.3.0
+
+for sample in SRR1267943     SRR1267944      SRR1267945      SRR1267946      SRR1267947      SRR1267948      SRR1267949      SRR1267950      SRR1267951
+#SRR1267952      SRR1267953      SRR1267954      SRR1267955      SRR1267956 	SRR1267957	SRR1267958	SRR1267959	SRR1267960	SRR1267961	SRR1267962	SRR1267963	SRR1267964	SRR1267965	SRR1267966	SRR1267967	SRR1267968	SRR1267969	SRR1267970	SRR1267971	SRR1267972	SRR1267973	SRR1267974	SRR1267975	SRR1267976	SRR1267977	SRR1267978	SRR1267979	SRR1267980	SRR1267981	SRR1267982	SRR1267983	SRR1267984	SRR1267985	SRR1267986	SRR1267987	SRR1267988	SRR1267989	SRR1267990	SRR1267991	SRR1267992	SRR1267993	SRR1267994	SRR1267995	SRR1267996	SRR1267997	SRR1267998
+#L001 L002 L003 L004 L005 L006 L007 L008
+do
+
+##download data from SRA
+#fastq-dump -A ${sample}
+
+##qc steps
+#fastqc -t 28 ${sample}.fastq -o fastqc/
+#multiqc fastqc/ fastqc/
+#echo "qc ${sample}.fastq complete "
+
+##Formatting reads and filtering noisy cellular barcodes
+#identify the real cells
+#umi_tools whitelist --stdin fastqs/hgmm_100_S1_${sample}_R1_001.fastq.gz \
+#--bc-pattern=CCCCCCCCCCCCCCCCNNNNNNNNNN \
+#--set-cell-number=100 \
+#--log2stderr > fastqs/${sample}-whitelist.txt
+
+##Demultiplexing sample reads
+##Extract the barcodes and filter the reads
+#umi_tools extract --bc-pattern=CCCCCCCCCCCCCCCCNNNNNNNNNN \
+#--stdin fastqs/hgmm_100_S1_${sample}_R1_001.fastq.gz \
+#--stdout ${sample}_extracted.fastq \
+#--whitelist=fastqs/${sample}-whitelist.txt
+
+##Mapping/pseudo-mapping to cDNAs using star
+##build genome for star
+#STAR --runThreadN 28 \
+#--runMode genomeGenerate \
+#--genomeDir ${genome} \
+#--genomeFastaFiles ${refFasta} \
+#--sjdbGTFfile ${genes} \
+#--sjdbOverhang 99
+
+##alignment using star
+#STAR --runThreadN 28 \
+#--genomeDir ${genome} \
+#--readFilesIn ${sample}_extracted.fastq \
+#--outFilterMultimapNmax 1 \
+#--outSAMtype BAM SortedByCoordinate \
+#--outFileNamePrefix ${sample}_
+
+#if the files are compressed
+#--readFilesCommand zcat \
+
+#activate featurecount package in python environment
+#source /rsrch3/home/anesth/bpaul/softwares/python-lib/singlecellpy/bin/activate
+#module load subread
+
+##Collapsing UMIs and quantification of reads
+#featureCounts -a ${genes} -o ${sample}_gene_assigned.bam -R BAM ${sample}_Aligned.sortedByCoord.out.bam -T 28
+
+#samtools sort ${sample}_gene_assigned.bam -o ${sample}_assigned.out_sorted.bam
+#samtools index ${sample}_assigned.out_sorted.bam
+
+##counting molecules
+umi_tools count --per-gene --gene-tag=XT --assigned-status-tag=XS --per-cell -I ${sample}_assigned_sorted.bam -S counts.tsv
+
+echo " ${sample} completed "
+
+done
+
+
+
+
+###expression analysis using Seurat
+#library(dplyr)
+#library(Seurat)
+#library(patchwork)
+
+

@@ -1,0 +1,80 @@
+###this script will be used to analyse 10X genomics single cell sequencing data 
+#BSUB -J scR
+#BSUB -W 24:00
+#BSUB -o /rsrch3/scratch/anesth/bpaul/JS_10XRNA_SC649/R
+#BSUB -e /rsrch3/scratch/anesth/bpaul/JS_10XRNA_SC649/R
+#BSUB -cwd /rsrch3/scratch/anesth/bpaul/JS_10XRNA_SC649/R
+#BSUB -q medium
+#BSUB -u bpaul@mdanderson.org
+#BSUB -n 28
+#BSUB -M 270
+#BSUB -R rusage[mem=270]
+
+
+##define global variable to save space
+scdir=/rsrch3/scratch/anesth/bpaul/js_10XRNA_SC649/R
+
+module load R/4.2.1
+
+##load packages
+library(dplyr)
+library(Seurat)
+library(patchwork)
+
+# Load the INF_KO dataset   
+inf_ko <- Read10X(data.dir = "/rsrch3/scratch/anesth/bpaul/js_10XRNA_SC649/R/INF_KO/filtered_feature_bc_matrix")
+infko <- CreateSeuratObject(counts = inf_ko, min.cells = 3, min.features = 200)
+
+#Load the INF_Ab_KO dataset   
+inf_abko <- Read10X(data.dir = "/rsrch3/scratch/anesth/bpaul/js_10XRNA_SC649/R/INF_Ab_KO/filtered_feature_bc_matrix")
+infabko <- CreateSeuratObject(counts = inf_abko, min.cells = 3, min.features = 200)
+
+# Load the INF_WT dataset   
+inf_wt <- Read10X(data.dir = "/rsrch3/scratch/anesth/bpaul/js_10XRNA_SC649/R/INF_WT/filtered_feature_bc_matrix")
+infwt <- CreateSeuratObject(counts = inf_wt, min.cells = 3, min.features = 200)
+
+#Load the INF_Ab_WT dataset   
+inf_abwt <- Read10X(data.dir = "/rsrch3/scratch/anesth/bpaul/js_10XRNA_SC649/R/INF_Ab_WT/filtered_feature_bc_matrix")
+infabwt <- CreateSeuratObject(counts = inf_abwt, min.cells = 3, min.features = 200)
+
+# Load the NS_KO dataset
+ns_ko <- Read10X(data.dir = "/rsrch3/scratch/anesth/bpaul/js_10XRNA_SC649/R/NS_KO/filtered_feature_bc_matrix")
+nsko <- CreateSeuratObject(counts = ns_ko, min.cells = 3, min.features = 200)
+
+#Load the NS_WT dataset
+ns_wt <- Read10X(data.dir = "/rsrch3/scratch/anesth/bpaul/js_10XRNA_SC649/R/NS_WT/filtered_feature_bc_matrix")
+nswt <- CreateSeuratObject(counts = ns_wt, min.cells = 3, min.features = 200)
+
+#The [[ operator can add or correct columns to object metadata. This is used to correct sample name
+infwt[["orig.ident"]] <- "INF_WT"
+infabwt[["orig.ident"]] <- "INF_Ab_WT"
+infko[["orig.ident"]] <- "INF_KO"
+infabko[["orig.ident"]] <- "INF_Ab_KO"
+nswt[["orig.ident"]] <- "NS_WT"
+nsko[["orig.ident"]] <- "NS_KO"
+
+##to merge more than two objects, pass one to x and a list of objects to y
+all=merge(x = infwt, y = c(infko, infko, infabwt, infabko, nswt, nsko))
+js.list <- SplitObject(all, split.by = "orig.ident")
+
+##Normalise samples individually
+for (i in 1:length(js.list)) {
+js.list[[i]] <- NormalizeData(js.list[[i]], verbose = FALSE)
+js.list[[i]] <- FindVariableFeatures(js.list[[i]], selection.method = "vst", nfeatures = 2000, verbose = FALSE)}
+
+# select features that are repeatedly variable across datasets for integration
+features <- SelectIntegrationFeatures(object.list = js.list)
+
+##find immune anchors
+immune.anchors <- FindIntegrationAnchors(object.list = js.list, anchor.features = features)
+
+# this command creates an 'integrated' data assay
+immune.combined <- IntegrateData(anchorset = immune.anchors)
+
+##Integrated analyses
+DefaultAssay(immune.combined) <- "integrated"
+
+save.image(immune.combined, file="immune.combined.RData")
+unlink("immune.combined.RData")
+
+quit()
